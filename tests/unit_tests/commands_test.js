@@ -204,6 +204,14 @@ context("KeyMappingsParser", () => {
 });
 
 context("Validate commands and options data structures", () => {
+  should("have an implementation for every content-script command", () => {
+    for (const command of allCommands.filter((command) => !command.background)) {
+      if (typeof NormalModeCommands[command.name] !== "function") {
+        assert.fail(`${command.name} is missing its content-script implementation.`);
+      }
+    }
+  });
+
   should("have either noRepeat or repeatLimit, but not both", () => {
     for (const command of allCommands) {
       const validProperties = !(command.noRepeat && command.repeatLimit);

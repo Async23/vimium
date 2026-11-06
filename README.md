@@ -47,6 +47,7 @@ Navigating the current page:
     yf      copy a link url to the clipboard
     gf      cycle forward to the next frame
     gF      focus the main/top frame
+    ;fs     select a scrollable area for subsequent scrolling commands
 
 Navigating to new pages:
 

@@ -364,6 +364,9 @@ const NormalModeCommands = {
   "LinkHints.activateModeToOpenIncognito": LinkHints.activateModeToOpenIncognito.bind(LinkHints),
   "LinkHints.activateModeToDownloadLink": LinkHints.activateModeToDownloadLink.bind(LinkHints),
   "LinkHints.activateModeToCopyLinkUrl": LinkHints.activateModeToCopyLinkUrl.bind(LinkHints),
+  "LinkHints.activateModeToFocusScrollable": LinkHints.activateModeToFocusScrollable.bind(
+    LinkHints,
+  ),
 
   "Vomnibar.activate": Vomnibar.activate.bind(Vomnibar),
   "Vomnibar.activateInNewTab": Vomnibar.activateInNewTab.bind(Vomnibar),

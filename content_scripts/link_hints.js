@@ -145,6 +145,10 @@ const FOCUS_LINK = {
     link.focus();
   },
 };
+const FOCUS_SCROLLABLE = {
+  name: "focus-scrollable",
+  indicator: "Select a scrollable area",
+};
 
 const availableModes = [
   OPEN_IN_CURRENT_TAB,
@@ -157,6 +161,7 @@ const availableModes = [
   COPY_LINK_TEXT,
   HOVER_LINK,
   FOCUS_LINK,
+  FOCUS_SCROLLABLE,
 ];
 
 const HintCoordinator = {
@@ -229,7 +234,10 @@ const HintCoordinator = {
     if (requestedByHelpDialog && !globalThis.isVimiumHelpDialog) {
       this.localHints = [];
     } else {
-      this.localHints = LocalHints.getLocalHints(requireHref);
+      this.localHints = LocalHints.getLocalHints(
+        requireHref,
+        availableModes[modeIndex] === FOCUS_SCROLLABLE,
+      );
     }
     this.localHintDescriptors = this.localHints.map(({ linkText }, localIndex) => (
       new HintDescriptor({
@@ -354,6 +362,9 @@ const LinkHints = {
   activateModeToDownloadLink(count) {
     this.activateMode(count, { mode: DOWNLOAD_LINK_URL });
   },
+  activateModeToFocusScrollable() {
+    this.activateMode(1, { mode: FOCUS_SCROLLABLE });
+  },
 };
 
 class LinkHintsMode {
@@ -378,7 +389,10 @@ class LinkHintsMode {
     this.confirming = null;
 
     if (hintDescriptors.length === 0) {
-      HUD.show("No links to select.", 2000);
+      HUD.show(
+        this.mode === FOCUS_SCROLLABLE ? "No scrollable areas to select." : "No links to select.",
+        2000,
+      );
       return;
     }
 
@@ -739,6 +753,9 @@ class LinkHintsMode {
             return Utils.nextTick(() => focusThisFrame({ highlight: true }));
           } else if (localHint.reason === "Scroll.") {
             // Tell the scroller that this is the activated element.
+            if (this.mode === FOCUS_SCROLLABLE && !windowIsFocused()) {
+              focusThisFrame({});
+            }
             return handlerStack.bubbleEvent(Utils.isFirefox() ? "click" : "DOMActivate", {
               target: clickEl,
             });
@@ -771,9 +788,25 @@ class LinkHintsMode {
     let removeFlashElements = function () {};
     if (linkMatched.isLocalMarker()) {
       const { top: viewportTop, left: viewportLeft } = DomUtils.getViewportTopLeft();
-      const flashElements = Array.from(clickEl.getClientRects()).map((rect) =>
-        DomUtils.addFlashRect(Rect.translate(rect, viewportLeft, viewportTop))
-      );
+      const scrollableOnly = this.mode === FOCUS_SCROLLABLE;
+      const rects = scrollableOnly
+        ? [linkMatched.localHint.rect]
+        : Array.from(clickEl.getClientRects());
+      const flashElements = rects.map((rect) => {
+        const flashRect = scrollableOnly
+          ? Rect.translate(rect, -viewportLeft, -viewportTop)
+          : Rect.translate(rect, viewportLeft, viewportTop);
+        const flash = DomUtils.addFlashRect(flashRect);
+        // A highlight must not cover the next target or enlarge the document being scrolled.
+        if (scrollableOnly) {
+          Object.assign(flash.style, {
+            pointerEvents: "none",
+            position: "fixed",
+            boxSizing: "border-box",
+          });
+        }
+        return flash;
+      });
       removeFlashElements = () => flashElements.map((flashEl) => DomUtils.removeElement(flashEl));
     }
 
@@ -1372,6 +1405,24 @@ const LocalHints = {
     return element;
   },
 
+  getScrollableHintsForElement(element) {
+    let rect = DomUtils.getVisibleClientRect(element, true);
+    if (!rect || !Scroller.canScroll(element)) return [];
+
+    // The document's box can extend far beyond the viewport. Its hint represents the visible page.
+    if (element === getScrollingElement()) {
+      rect = Rect.create(0, 0, globalThis.innerWidth, globalThis.innerHeight);
+    } else {
+      rect = Rect.create(
+        rect.left,
+        rect.top,
+        Math.min(rect.right, globalThis.innerWidth),
+        Math.min(rect.bottom, globalThis.innerHeight),
+      );
+    }
+    return [new LocalHint({ element, rect, reason: "Scroll." })];
+  },
+
   // Returns an array of LocalHints representing all clickable elements that are not hidden and are
   // in the current viewport, along with rectangles at which (parts of) the elements are displayed.
   // In the process, we try to find rects where elements do not overlap so that link hints are
@@ -1379,7 +1430,8 @@ const LocalHints = {
   // rects for the whole element.
   // - requireHref: true if the hintable element must have an href, because an href is required for
   //   commands like "LinkHints.activateModeToCopyLinkUrl".
-  getLocalHints(requireHref) {
+  // - scrollableOnly: offer scroll targets instead of clickable elements, including the active one.
+  getLocalHints(requireHref, scrollableOnly = false) {
     // We need documentElement to be ready in order to find links.
     if (!document.documentElement) return [];
 
@@ -1396,6 +1448,7 @@ const LocalHints = {
     };
 
     const elements = getAllElements(document.documentElement);
+    if (scrollableOnly) elements.unshift(document.documentElement);
     let localHints = [];
 
     // The order of elements here is important; they should appear in the order they are in the DOM,
@@ -1406,7 +1459,9 @@ const LocalHints = {
     // below.
     for (const element of Array.from(elements)) {
       if (!requireHref || !!element.href) {
-        const hints = this.getLocalHintsForElement(element);
+        const hints = scrollableOnly
+          ? this.getScrollableHintsForElement(element)
+          : this.getLocalHintsForElement(element);
         localHints.push(...hints);
       }
     }

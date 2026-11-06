@@ -238,6 +238,17 @@ const allCommands = [
   },
 
   {
+    name: "LinkHints.activateModeToFocusScrollable",
+    desc: "Select a scrollable area",
+    details: "Show hints only for visible scrollable areas, including the main page. " +
+      "Choose an area, then use the normal scrolling keys, such as `j`, `k`, `h`, and `l`. " +
+      "Press `Esc` to cancel without changing the scroll target.",
+    group: "navigation",
+    advanced: true,
+    noRepeat: true,
+  },
+
+  {
     name: "goPrevious",
     desc: "Follow the link labeled previous or <",
     group: "navigation",

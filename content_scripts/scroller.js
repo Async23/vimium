@@ -408,6 +408,15 @@ const Scroller = {
     return CoreScroller.scroll(element, direction, amount);
   },
 
+  // Offer scroll targets on either axis, even at an edge or when already active.
+  canScroll(element) {
+    return ["y", "x"].some((direction) => {
+      const { max, viewSize } = scrollProperties[direction];
+      return element[max] > element[viewSize] && shouldScroll(element, direction) &&
+        (doesScroll(element, direction, 1, 1) || doesScroll(element, direction, -1, 1));
+    });
+  },
+
   // Is element scrollable and not the activated element?
   isScrollableElement(element) {
     if (!activatedElement) {
