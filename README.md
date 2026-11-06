@@ -1,19 +1,20 @@
-# Vimium - The Hacker's Browser
+# Vimium Scroll
 
-Vimium is a browser extension that provides keyboard-based navigation and control of the web in the
-spirit of the Vim editor.
+A fork of [Vimium](https://github.com/philc/vimium) with `;fs` to select scrollable areas for
+keyboard navigation.
+
+To install this fork, follow the
+[source installation instructions](CONTRIBUTING.md#installing-from-source).
 
 [Watch the demo video](https://www.youtube.com/watch?v=t67Sn0RGK54).
 
-**Installation instructions:**
+**Upstream Vimium releases:**
 
 - Chrome:
   [Chrome web store](https://chromewebstore.google.com/detail/vimium/dbepggeogbaibhgnhhndojpepiihcmeb)
 - Edge:
   [Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/vimium/djmieaghokpkpjfbpelnlkfgfjapaopa)
 - Firefox: [Firefox Add-ons](https://addons.mozilla.org/en-GB/firefox/addon/vimium-ff/)
-
-To install from source, see [here](CONTRIBUTING.md#installing-from-source).
 
 Vimium's Options page can be reached via a link on the help dialog (type `?`) or via the button next
 to Vimium on the extension pages of Chrome and Edge (`chrome://extensions`), or Firefox

@@ -191,7 +191,6 @@ async function buildStorePackage() {
     "*.md",
     ".*",
     "CREDITS",
-    "MIT-LICENSE.txt",
     "build_scripts",
     "dist",
     "make.js",
@@ -250,8 +249,8 @@ async function buildStorePackage() {
 
   // Build the Chrome Store dev package.
   await writeDistManifest(Object.assign({}, chromeManifest, {
-    name: "Vimium Canary",
-    description: "This is the development branch of Vimium (it is beta software).",
+    name: `${chromeManifest.name} Canary`,
+    description: `Development build of ${chromeManifest.name}.`,
   }));
   await shell("bash", [
     "-c",
