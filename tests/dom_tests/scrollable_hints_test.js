@@ -180,7 +180,52 @@ context("Scrollable area hints", () => {
     const messages = [];
     stub(HUD, "show", (message) => messages.push(message));
     const mode = activateScrollableHints();
-    assert.equal("No scrollable areas to select.", messages[messages.length - 1]);
+    assert.equal(";fs 已触发：此页没有可滚动区域", messages[messages.length - 1]);
     assert.equal(null, mode.hintMode);
+  });
+
+  should("keep a visible confirmation while choosing among scrollable areas", () => {
+    createScroller();
+    createScroller();
+    const messages = [];
+    stub(HUD, "show", (message) => messages.push(message));
+    const mode = activateScrollableHints();
+    const text = mode.hintMode.options.indicator;
+    assert.isTrue(text.includes(";fs 已开启"));
+    assert.isTrue(text.includes("2 个滚动区域"));
+    assert.isTrue(text.includes("Esc"));
+    assert.equal(text, messages[messages.length - 1]);
+  });
+
+  should("explain when the main page is the only scroll target", () => {
+    fixture.style.height = "1600px";
+    const mode = activateScrollableHints();
+    const text = mode.hintMode.options.indicator;
+    assert.isTrue(text.includes(";fs 已开启"));
+    assert.isTrue(text.includes("只有整页可滚动"));
+    assert.isTrue(text.includes(mode.hintMarkers[0].hintString.toUpperCase()));
+  });
+
+  should("confirm which kind of scroll target was selected", () => {
+    const scroller = createScroller();
+    fixture.style.height = "1600px";
+    const messages = [];
+    stub(HUD, "show", (message) => messages.push(message));
+    selectScroller(scroller);
+    assert.equal("已选择滚动区域｜j/k 滚动，;fs 重选", messages[messages.length - 1]);
+    selectScroller(document.scrollingElement);
+    assert.equal("已选择整页｜j/k 滚动，;fs 重选", messages[messages.length - 1]);
+  });
+
+  should("confirm cancellation without changing the scroll target", () => {
+    const scroller = createScroller();
+    selectScroller(scroller);
+    const messages = [];
+    stub(HUD, "show", (message) => messages.push(message));
+    const mode = activateScrollableHints();
+    mode.hintMode.exit({ type: "keydown", key: "Escape" });
+    assert.equal("已退出滚动区域选择", messages[messages.length - 1]);
+    Scroller.scrollBy("y", 40, 1, false);
+    assert.equal(40, scroller.scrollTop);
   });
 });

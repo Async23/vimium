@@ -297,6 +297,8 @@ const HintCoordinator = {
   },
 
   exit({ isSuccess }) {
+    const cancelledScrollSelection = this.linkHintsMode?.mode === FOCUS_SCROLLABLE &&
+      !isSuccess && windowIsFocused();
     if (this.linkHintsMode != null) {
       this.linkHintsMode.deactivateMode();
     }
@@ -304,6 +306,9 @@ const HintCoordinator = {
       this.onExit.pop()(isSuccess);
     }
     this.linkHintsMode = this.localHints = null;
+    if (cancelledScrollSelection) {
+      HUD.show("已退出滚动区域选择", 1500, "scrollable-area-status");
+    }
   },
 
   mouseOutOfLastClickedElement() {
@@ -390,8 +395,9 @@ class LinkHintsMode {
 
     if (hintDescriptors.length === 0) {
       HUD.show(
-        this.mode === FOCUS_SCROLLABLE ? "No scrollable areas to select." : "No links to select.",
+        this.mode === FOCUS_SCROLLABLE ? ";fs 已触发：此页没有可滚动区域" : "No links to select.",
         2000,
+        this.mode === FOCUS_SCROLLABLE ? "scrollable-area-status" : undefined,
       );
       return;
     }
@@ -493,8 +499,15 @@ class LinkHintsMode {
       const typedCharacters = this.markerMatcher.linkTextKeystrokeQueue
         ? this.markerMatcher.linkTextKeystrokeQueue.join("")
         : "";
-      const indicator = this.mode.indicator + (typedCharacters ? `: \"${typedCharacters}\"` : "") +
-        ".";
+      let indicator = this.mode.indicator;
+      if (this.mode === FOCUS_SCROLLABLE) {
+        const onlyHint = this.hintMarkers.length === 1 ? this.hintMarkers[0] : null;
+        indicator = onlyHint?.localHint?.element === getScrollingElement()
+          ? `;fs 已开启｜只有整页可滚动｜按 ${onlyHint.hintString.toUpperCase()} 选择，Esc 退出`
+          : `;fs 已开启｜${this.hintMarkers.length} 个滚动区域｜按提示键选择，Esc 退出`;
+      }
+      indicator += typedCharacters ? `: \"${typedCharacters}\"` : "";
+      if (this.mode !== FOCUS_SCROLLABLE) indicator += ".";
       this.hintMode.setIndicator(indicator);
     }
   }
@@ -753,8 +766,10 @@ class LinkHintsMode {
             return Utils.nextTick(() => focusThisFrame({ highlight: true }));
           } else if (localHint.reason === "Scroll.") {
             // Tell the scroller that this is the activated element.
-            if (this.mode === FOCUS_SCROLLABLE && !windowIsFocused()) {
-              focusThisFrame({});
+            if (this.mode === FOCUS_SCROLLABLE) {
+              if (!windowIsFocused()) focusThisFrame({});
+              const target = clickEl === getScrollingElement() ? "整页" : "滚动区域";
+              HUD.show(`已选择${target}｜j/k 滚动，;fs 重选`, 2000, "scrollable-area-status");
             }
             return handlerStack.bubbleEvent(Utils.isFirefox() ? "click" : "DOMActivate", {
               target: clickEl,

@@ -80,6 +80,10 @@ const HUD = {
     clearTimeout(this._showForDurationTimerId);
     // @hudUI.activate will take charge of making it visible
     await this.init(false);
+    this.hudUI.iframeElement.classList.toggle(
+      "vimium-scroll-hud",
+      messageName === "link-hints/focus-scrollable" || messageName === "scrollable-area-status",
+    );
     this.hudUI.show({ name: "show", text, messageName });
     this.tween.fade(1.0, 150);
 
@@ -92,6 +96,7 @@ const HUD = {
     this.findMode = findMode;
     await DomUtils.documentComplete();
     await this.init();
+    this.hudUI.iframeElement.classList.remove("vimium-scroll-hud");
     this.hudUI.show({ name: "showFindMode" });
     this.tween.fade(1.0, 150);
   },

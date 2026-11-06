@@ -33,6 +33,18 @@
   line-height: 20px;
 }
 
+#hud[data-message-name="link-hints/focus-scrollable"],
+#hud[data-message-name="scrollable-area-status"] {
+  height: auto;
+  min-height: 34px;
+  padding: 6px 10px;
+  line-height: 22px;
+  font-weight: 600;
+  background-color: #5b21b6;
+  color: white;
+  overflow-wrap: anywhere;
+}
+
 span#hud-find-input,
 span#hud-match-count {
   display: inline;

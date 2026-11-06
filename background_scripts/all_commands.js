@@ -242,6 +242,7 @@ const allCommands = [
     desc: "Select a scrollable area",
     details: "Show hints only for visible scrollable areas, including the main page. " +
       "Choose an area, then use the normal scrolling keys, such as `j`, `k`, `h`, and `l`. " +
+      "A visible status confirms when selection starts, when a target is selected, and when it exits. " +
       "Press `Esc` to cancel without changing the scroll target.",
     group: "navigation",
     advanced: true,

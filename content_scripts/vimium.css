@@ -197,6 +197,14 @@ iframe.vimium-hud-frame {
   opacity: 0;
 }
 
+iframe.vimium-hud-frame.vimium-scroll-hud {
+  width: min(560px, calc(100vw - 24px));
+  min-width: 0;
+  height: 88px;
+  bottom: 8px;
+  right: 8px;
+}
+
 body.vimium-find-mode ::selection {
   background: #ff9632;
 }
