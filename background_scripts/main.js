@@ -858,10 +858,9 @@ async function showUpgradeMessageIfNecessary(onInstalledDetails) {
 }
 
 async function injectContentScriptsAndCSSIntoExistingTabs() {
-  const manifest = chrome.runtime.getManifest();
-  const contentScriptConfig = manifest.content_scripts[0];
-  const contentScripts = contentScriptConfig.js;
-  const cssFiles = contentScriptConfig.css;
+  const configs = chrome.runtime.getManifest().content_scripts;
+  const frontend = configs.find((config) => config.js && config.world !== "MAIN");
+  const clickWatch = configs.find((config) => config.world === "MAIN");
 
   // The scripting.executeScript and scripting.insertCSS APIs can fail if we don't have permissions
   // to run scripts in a given tab. Examples are: chrome:// URLs, file:// pages (if the user hasn't
@@ -872,28 +871,38 @@ async function injectContentScriptsAndCSSIntoExistingTabs() {
   // This is simpler.
   const swallowError = (_) => {};
 
-  const tabs = await chrome.tabs.query({ status: "complete" });
-  for (const tab of tabs) {
+  const tabs = await chrome.tabs.query({ discarded: false });
+  await Promise.all(tabs.map(async (tab) => {
     const target = { tabId: tab.id, allFrames: true };
+    const [frames] = await Promise.all([
+      chrome.scripting.executeScript({
+        target,
+        injectImmediately: true,
+        func: () => typeof globalThis.LocalHints === "undefined",
+      }).catch(() => []),
+      chrome.scripting.executeScript({
+        files: clickWatch.js,
+        target,
+        world: "MAIN",
+        injectImmediately: true,
+      }).catch(swallowError),
+    ]);
 
-    // Inject all of our content javascripts.
-    chrome.scripting.executeScript({
-      files: contentScripts,
-      target: target,
-    }).catch(swallowError);
-
-    // Inject our extension's CSS.
-    chrome.scripting.insertCSS({
-      files: cssFiles,
-      target: target,
-    }).catch(swallowError);
-
-    // Inject the user's link hint CSS.
-    chrome.scripting.insertCSS({
-      css: Settings.get("userDefinedLinkHintCss"),
-      target: target,
-    }).catch(swallowError);
-  }
+    // A frame opened during the update may already have the declarative content scripts. Inject
+    // into missing documents by ID so a subsequent navigation cannot install the frontend twice.
+    const documentIds = frames.filter((frame) => frame.result).map((frame) => frame.documentId);
+    if (!documentIds.length) return;
+    const missing = { tabId: tab.id, documentIds };
+    await Promise.all([
+      chrome.scripting.executeScript({
+        files: frontend.js,
+        target: missing,
+        injectImmediately: true,
+      }),
+      chrome.scripting.insertCSS({ files: frontend.css, target: missing }),
+      chrome.scripting.insertCSS({ css: Settings.get("userDefinedLinkHintCss"), target: missing }),
+    ]).catch(swallowError);
+  }));
 }
 
 async function initializeExtension() {
@@ -911,13 +920,8 @@ chrome.runtime.onInstalled.addListener(async (details) => {
   // also occur, so we need to initialize Vimium here.
   await initializeExtension();
 
-  const shouldInjectContentScripts =
-    // NOTE(philc): 2023-06-16: we do not install the content scripts in all tabs on Firefox.
-    // I believe this is because Firefox does this already. See https://stackoverflow.com/a/37132144
-    // for commentary.
-    !bgUtils.isFirefox() &&
-    (["chrome_update", "shared_module_update"].includes(details.reason));
-  if (shouldInjectContentScripts) injectContentScriptsAndCSSIntoExistingTabs();
+  // Chrome reports reloading an unpacked extension as an update. Firefox handles existing tabs.
+  if (!bgUtils.isFirefox()) await injectContentScriptsAndCSSIntoExistingTabs();
 
   await showUpgradeMessageIfNecessary(details);
 });

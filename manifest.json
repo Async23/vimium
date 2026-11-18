@@ -84,6 +84,14 @@
       ],
       "run_at": "document_start",
       "all_frames": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content_scripts/click_watch_main.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true,
+      "world": "MAIN"
     }
   ],
   // Uncomment when developing in Firefox.

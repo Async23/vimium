@@ -101,6 +101,16 @@ const createGeneralHintTests = (isFilteredMode) => {
 createGeneralHintTests(false);
 createGeneralHintTests(true);
 
+context("Frames from before an extension reload", () => {
+  should("ignore a focus check after the extension context is gone", async () => {
+    stub(chrome.runtime, "id", undefined);
+    stub(chrome.runtime, "sendMessage", () => {
+      throw new Error("An unloaded frame tried to send a message.");
+    });
+    await checkIfEnabledForUrl();
+  });
+});
+
 context("False positives in link-hint", () => {
   setup(() => {
     const testContent = '<span class="buttonWrapper">false positive<a>clickable</a></span>' +
@@ -117,6 +127,17 @@ context("False positives in link-hint", () => {
     const mode = activateLinkHintsMode();
     mode.deactivateMode();
     assert.equal(["clickable", "clickable"], mode.hintMarkers.map((m) => m.linkText));
+  });
+
+  should("prefer the visible controls to a deeply nested delegation container", () => {
+    const container = document.getElementById("test-div");
+    container.innerHTML = "<section data-vimium-click><div><div><div><div>" +
+      '<div style="cursor:pointer">one<span> child</span></div><button>two</button>' +
+      "<p>ordinary text</p></div></div></div></div></section>";
+    const hints = LocalHints.getLocalHints(false).filter((hint) =>
+      container.contains(hint.element)
+    );
+    assert.equal(["one child", "two"], hints.map((hint) => hint.element.textContent));
   });
 });
 

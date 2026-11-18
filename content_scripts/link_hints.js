@@ -1168,12 +1168,41 @@ const spanWrap = (hintString) => {
   return innerHTML.join("");
 };
 
+// CSS cursor is inherited. Under a delegated listener, only the outer edge of a pointer-styled
+// block is evidence of a control. Cache computed cursors for the duration of one hint scan.
+class ScriptClickEvidence {
+  pointerCursors = new WeakMap();
+
+  hasPointerCursor(element) {
+    if (!this.pointerCursors.has(element)) {
+      const view = element.ownerDocument.defaultView;
+      this.pointerCursors.set(element, view?.getComputedStyle(element).cursor === "pointer");
+    }
+    return this.pointerCursors.get(element);
+  }
+
+  classify(element) {
+    if (element.hasAttribute("data-vimium-click")) return "self";
+    if (element === element.ownerDocument.body) return null;
+    const parent = element.parentElement ?? element.getRootNode().host;
+    // closest() stops at a shadow root. Continue the search at its host when needed.
+    for (let ancestor = parent; ancestor; ancestor = ancestor.getRootNode().host) {
+      const host = ancestor.closest("[data-vimium-click], [data-vimium-click-root]");
+      if (host) {
+        if (!this.hasPointerCursor(element) || this.hasPointerCursor(parent)) return null;
+        return host.hasAttribute("data-vimium-click") ? "delegated" : "weak";
+      }
+    }
+    return null;
+  }
+}
+
 const LocalHints = {
   // Returns an array of LocalHints if the element is visible and clickable, and computes the rect
   // which bounds this element in the viewport. We return an array because there may be more than
   // one part of element which is clickable (for example, if it's an image); if so, each LocalHint
   // represents one of the clickable rectangles of the element.
-  getLocalHintsForElement(element) {
+  getLocalHintsForElement(element, clickEvidence = new ScriptClickEvidence()) {
     // Get the tag name. However, `element.tagName` can be an element (not a string, see #2035), so
     // we guard against that.
     const tagName = element.tagName.toLowerCase?.() || "";
@@ -1302,7 +1331,7 @@ const LocalHints = {
       case "label":
         isClickable ||= (element.control != null) &&
           !element.control.disabled &&
-          ((this.getLocalHintsForElement(element.control)).length === 0);
+          ((this.getLocalHintsForElement(element.control, clickEvidence)).length === 0);
         break;
       case "body":
         isClickable ||= (element === document.body) && !windowIsFocused() &&
@@ -1333,9 +1362,12 @@ const LocalHints = {
         break;
     }
 
-    // NOTE(smblott) Disabled pending resolution of #2997.
-    // # Detect elements with "click" listeners installed with `addEventListener()`.
-    // isClickable ||= element.hasAttribute "_vimium-has-onclick-listener"
+    // Let native and semantic controls keep their ordinary hint and action. A script-only
+    // candidate may be a delegation container with a more specific clickable descendant.
+    if (!isClickable && !element.disabled && !element.readOnly && clickEvidence.classify(element)) {
+      isClickable = true;
+      possibleFalsePositive = true;
+    }
 
     // An element with a class name containing the text "button" might be clickable. However, real
     // clickables are often wrapped in elements with such class names. So, when we find clickables
@@ -1464,6 +1496,7 @@ const LocalHints = {
 
     const elements = getAllElements(document.documentElement);
     if (scrollableOnly) elements.unshift(document.documentElement);
+    const clickEvidence = new ScriptClickEvidence();
     let localHints = [];
 
     // The order of elements here is important; they should appear in the order they are in the DOM,
@@ -1476,7 +1509,7 @@ const LocalHints = {
       if (!requireHref || !!element.href) {
         const hints = scrollableOnly
           ? this.getScrollableHintsForElement(element)
-          : this.getLocalHintsForElement(element);
+          : this.getLocalHintsForElement(element, clickEvidence);
         localHints.push(...hints);
       }
     }
@@ -1484,28 +1517,16 @@ const LocalHints = {
     // Traverse the DOM from descendants to ancestors, so later elements show above earlier elements.
     localHints = localHints.reverse();
 
-    // Filter out suspected false positives. A false positive is taken to be an element marked as a
-    // possible false positive for which a close descendant is already clickable. False positives
-    // tend to be close together in the DOM, so - to keep the cost down - we only search nearby
-    // elements. NOTE(smblott): The visible elements have already been reversed, so we're visiting
-    // descendants before their ancestors.
-    // This determines how many descendants we're willing to consider.
-    const descendantsToCheck = [1, 2, 3];
-    localHints = localHints.filter((hint, position) => {
-      if (!hint.possibleFalsePositive) return true;
-      // Determine if the clickable element is indeed a false positive.
-      const lookbackWindow = 6;
-      let index = Math.max(0, position - lookbackWindow);
-      while (index < position) {
-        let candidateDescendant = localHints[index].element;
-        for (const _ of descendantsToCheck) {
-          candidateDescendant = candidateDescendant?.parentElement;
-          if (candidateDescendant === hint.element) {
-            // This is a false positive; exclude it from visibleElements.
-            return false;
-          }
-        }
-        index += 1;
+    // A delegation container can be many levels above the actual controls. Visit descendants
+    // first and mark each ancestor once, irrespective of nesting depth or the number of siblings.
+    const hintedAncestors = new Set();
+    localHints = localHints.filter((hint) => {
+      if (hint.possibleFalsePositive && hintedAncestors.has(hint.element)) return false;
+      if (hint.secondClassCitizen) return true;
+      let ancestor = hint.element.parentElement ?? hint.element.getRootNode().host;
+      while (ancestor && !hintedAncestors.has(ancestor)) {
+        hintedAncestors.add(ancestor);
+        ancestor = ancestor.parentElement ?? ancestor.getRootNode().host;
       }
       return true;
     });

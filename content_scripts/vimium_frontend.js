@@ -426,6 +426,8 @@ async function initializePreDomReady() {
 
 // Check if Vimium should be enabled or not based on the top frame's URL.
 async function checkIfEnabledForUrl() {
+  // The old frame can still receive focus before its first key event after an extension reload.
+  if (extensionHasBeenUnloaded()) return;
   const promises = [];
   promises.push(chrome.runtime.sendMessage({ handler: "initializeFrame" }));
   if (!Settings.isLoaded()) {
