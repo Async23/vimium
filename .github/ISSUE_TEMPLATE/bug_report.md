@@ -1,28 +1,19 @@
 ---
-name: Bug report
-about: File a bug
+name: 问题反馈
+about: 报告 Vimium Scroll 的使用问题
 title: ""
 labels: ""
 assignees: ""
 ---
 
-**Describe the bug**
+## 复现步骤
 
-Include a clear bug description.
+请提供可公开访问的示例页面或一段最小 HTML，并列出按键顺序。
 
-**To Reproduce**
+## 预期结果与实际结果
 
-Steps to reproduce the behavior:
+请说明页面上出现了什么，以及你原本希望发生什么。
 
-1. Go to URL '...'
-2. Click on '....'
+## 环境
 
-Include a screenshot if applicable.
-
-**Browser and Vimium version**
-
-If you're using Chrome, include the Chrome and OS version found at chrome://version. Also include
-the Vimium version found at chrome://extensions.
-
-If you're using Firefox, report the Firefox and OS version found at about:support. Also include the
-Vimium version found at about:addons.
+请提供 Chrome 版本、操作系统和 Vimium Scroll 版本。扩展版本可在 `chrome://extensions` 查看。

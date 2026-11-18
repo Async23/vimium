@@ -837,9 +837,9 @@ async function showUpgradeMessageIfNecessary(onInstalledDetails) {
     {
       type: "basic",
       iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-      title: "Vimium Upgrade",
+      title: "Vimium Scroll updated",
       message:
-        `Vimium has been upgraded to version ${currentVersion}. Click here for more information.`,
+        `Vimium Scroll has been updated to version ${currentVersion}. View the release notes.`,
       isClickable: true,
     },
   );
@@ -851,7 +851,7 @@ async function showUpgradeMessageIfNecessary(onInstalledDetails) {
       TabOperations.openUrlInNewTab({
         tab,
         tabId: tab.id,
-        url: "https://github.com/philc/vimium/blob/master/CHANGELOG.md",
+        url: "https://github.com/Async23/vimium/releases",
       });
     });
   }

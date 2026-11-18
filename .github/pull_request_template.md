@@ -1,5 +1,7 @@
-## Description
+## 改动
 
-Provide a rationale for this PR, and a reference to the corresponding issue, if there is one.
+说明受影响的用户操作，以及关联的问题（如有）。
 
-Please review the "Which pull requests get merged?" section in `CONTRIBUTING.md`.
+## 验证
+
+列出运行过的测试和手工验证步骤。[开发与测试说明](https://github.com/Async23/vimium/blob/master/CONTRIBUTING.md)
