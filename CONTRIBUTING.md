@@ -1,4 +1,4 @@
-# 参与 Vimium Scroll
+# 参与 Vimium Async
 
 反馈问题时，请附上 Chrome 和扩展版本、复现步骤，以及可公开访问的示例页面或一段最小
 HTML。拉取请求请说明哪些键盘操作会受影响，以及如何验证。[本项目的问题列表](https://github.com/Async23/vimium/issues)
@@ -38,6 +38,6 @@ deno run -A puppeteer browsers install chrome
 ```
 
 Chrome 安装包位于 `dist/chrome-store/`。GitHub 发布附件统一命名为
-`vimium-scroll-chrome.zip`，解压后可直接加载。版本号取自根目录的 `manifest.json`。
+`vimium-async-chrome.zip`，解压后可直接加载。版本号取自根目录的 `manifest.json`。
 
 上游项目另有自己的贡献指南。[Vimium 贡献指南](https://github.com/philc/vimium/blob/master/CONTRIBUTING.md)

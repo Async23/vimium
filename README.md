@@ -1,16 +1,16 @@
-# Vimium Scroll
+# Vimium Async
 
-Vimium Scroll 是一个面向 Chrome 的 Vimium
+Vimium Async 是一个面向 Chrome 的 Vimium
 分支。你可以用键盘选定要滚动的侧栏或正文，也可以用提示字符操作网页脚本绑定的按钮和标签页。[上游 Vimium](https://github.com/philc/vimium)
 
 ## 安装到 Chrome
 
-1. 下载扩展包，解压到准备长期保留的文件夹。[下载 Chrome 扩展包](https://github.com/Async23/vimium/releases/latest/download/vimium-scroll-chrome.zip)
+1. 下载扩展包，解压到准备长期保留的文件夹。[下载 Chrome 扩展包](https://github.com/Async23/vimium/releases/latest/download/vimium-async-chrome.zip)
 2. 打开 `chrome://extensions`，开启「开发者模式」，点击「加载已解压的扩展程序」。
 3. 选择包含 `manifest.json` 的文件夹。如果已启用原版
    Vimium，请停用原版，避免两个扩展同时响应快捷键。
 
-更新时，用新版文件替换原目录中的扩展文件，然后在扩展管理页点击 Vimium Scroll
+更新时，用新版文件替换原目录中的扩展文件，然后在扩展管理页点击 Vimium Async
 的「重新加载」。如果先前打开的网页有控件缺少提示，刷新该页即可重新识别。
 
 ## 两个常用操作

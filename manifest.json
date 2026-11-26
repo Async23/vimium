@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
-  "name": "Vimium Scroll",
-  "version": "2.4.3",
+  "name": "Vimium Async",
+  "version": "2.4.4",
   "description": "Use Vimium shortcuts to activate JavaScript controls and select which part of a page to scroll with ;fs.",
   "homepage_url": "https://github.com/Async23/vimium",
   "icons": {

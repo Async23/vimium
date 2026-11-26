@@ -1,6 +1,6 @@
 ---
 name: 问题反馈
-about: 报告 Vimium Scroll 的使用问题
+about: 报告 Vimium Async 的使用问题
 title: ""
 labels: ""
 assignees: ""
@@ -16,4 +16,4 @@ assignees: ""
 
 ## 环境
 
-请提供 Chrome 版本、操作系统和 Vimium Scroll 版本。扩展版本可在 `chrome://extensions` 查看。
+请提供 Chrome 版本、操作系统和 Vimium Async 版本。扩展版本可在 `chrome://extensions` 查看。

@@ -837,9 +837,9 @@ async function showUpgradeMessageIfNecessary(onInstalledDetails) {
     {
       type: "basic",
       iconUrl: chrome.runtime.getURL("icons/icon128.png"),
-      title: "Vimium Scroll updated",
+      title: "Vimium Async updated",
       message:
-        `Vimium Scroll has been updated to version ${currentVersion}. View the release notes.`,
+        `Vimium Async has been updated to version ${currentVersion}. View the release notes.`,
       isClickable: true,
     },
   );
