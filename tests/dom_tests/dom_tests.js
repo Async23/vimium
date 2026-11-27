@@ -139,6 +139,25 @@ context("False positives in link-hint", () => {
     );
     assert.equal(["one child", "two"], hints.map((hint) => hint.element.textContent));
   });
+
+  should(
+    "prefer inner prop-bound targets over outer pointer wrappers and skip disabled cursors",
+    () => {
+      const container = document.getElementById("test-div");
+      container.innerHTML = [
+        '<div data-vimium-click style="cursor:pointer; width:200px; height:100px">',
+        '  <div id="more-wrap" style="cursor:pointer; width:40px; height:40px">',
+        '    <svg id="more-svg" data-vimium-prop-click width="24" height="24"></svg>',
+        "  </div>",
+        '  <div id="next-disabled" data-vimium-prop-click style="cursor:not-allowed; width:40px; height:40px">next</div>',
+        "</div>",
+      ].join("");
+      const hints = LocalHints.getLocalHints(false).filter((hint) =>
+        container.contains(hint.element)
+      );
+      assert.equal(["more-svg"], hints.map((hint) => hint.element.id));
+    },
+  );
 });
 
 context("jsaction matching", () => {

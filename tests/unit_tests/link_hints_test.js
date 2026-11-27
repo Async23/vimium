@@ -149,6 +149,77 @@ context("Script-bound link hints", () => {
     assert.equal(1, reads);
     assert.isFalse(hasHint(el));
   });
+
+  should(
+    "recognize React and IDL click props inside pointer containers while skipping non-click or disabled controls",
+    async () => {
+      doc.body.innerHTML = [
+        '<div id="player" style="cursor:pointer">',
+        '  <div id="like">5286</div>',
+        '  <div id="author" style="cursor:auto">@author</div>',
+        '  <div id="disabled-prop">disabled prop</div>',
+        '  <div id="disabled-cursor" style="cursor:not-allowed">next</div>',
+        '  <div id="inert-overlay" style="pointer-events:none">overlay</div>',
+        '  <div id="capture-only">panel</div>',
+        '  <div id="idl-btn">idl</div>',
+        "</div>",
+      ].join("");
+      doc.getElementById("player").addEventListener("click", noop);
+      await Promise.resolve();
+
+      const like = doc.getElementById("like");
+      const author = doc.getElementById("author");
+      const disabledProp = doc.getElementById("disabled-prop");
+      const disabledCursor = doc.getElementById("disabled-cursor");
+      const inertOverlay = doc.getElementById("inert-overlay");
+      const captureOnly = doc.getElementById("capture-only");
+      const idlBtn = doc.getElementById("idl-btn");
+
+      like.__reactProps$abc = { onClick: noop };
+      author.__reactEventHandlers$xyz = { onClick: noop };
+      disabledProp.__reactProps$abc = { onClick: noop, disabled: true };
+      disabledCursor.__reactProps$abc = { onClick: noop };
+      inertOverlay.__reactProps$abc = { onClick: noop };
+      captureOnly.__reactProps$abc = { onClickCapture: noop, onPointerDown: noop };
+      idlBtn.onclick = noop;
+
+      assert.isTrue(hasHint(like));
+      assert.isTrue(hasHint(author));
+      assert.isFalse(hasHint(disabledProp));
+      assert.isFalse(hasHint(disabledCursor));
+      assert.isFalse(hasHint(inertOverlay));
+      assert.isFalse(hasHint(captureOnly));
+      assert.isTrue(hasHint(idlBtn));
+
+      // Re-renders that drop onClick or clear onclick must retire stale markers on the next scan.
+      like.__reactProps$abc = { onMouseEnter: noop };
+      idlBtn.onclick = null;
+      assert.isFalse(hasHint(like));
+      assert.isFalse(hasHint(idlBtn));
+    },
+  );
+
+  should(
+    "support page-level onclick delegates and install prop sync across script upgrades",
+    () => {
+      const freshPage = new JSDOM(
+        '<body><div id="item" style="cursor:pointer">item</div><p id="plain">plain</p></body>',
+        { runScripts: "outside-only" },
+      ).window;
+      try {
+        // Simulate a tab that already had an older clickWatch symbol before extension reload.
+        freshPage[Symbol.for("vimium.clickWatch")] = true;
+        freshPage.eval(Deno.readTextFileSync(watcher));
+        freshPage.document.onclick = noop;
+        assert.isTrue(hasHint(freshPage.document.getElementById("item")));
+        assert.isFalse(hasHint(freshPage.document.getElementById("plain")));
+        freshPage.document.onclick = null;
+        assert.isFalse(hasHint(freshPage.document.getElementById("item")));
+      } finally {
+        freshPage.close();
+      }
+    },
+  );
 });
 
 context("With insufficient link characters", () => {

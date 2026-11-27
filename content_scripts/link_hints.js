@@ -1168,29 +1168,72 @@ const spanWrap = (hintString) => {
   return innerHTML.join("");
 };
 
+const CLICK_PROP_SYNC_EVENT = "vimium:sync-click-props";
+
 // CSS cursor is inherited. Under a delegated listener, only the outer edge of a pointer-styled
-// block is evidence of a control. Cache computed cursors for the duration of one hint scan.
+// block is evidence of a control. Cache computed styles for the duration of one hint scan.
 class ScriptClickEvidence {
-  pointerCursors = new WeakMap();
+  styles = new WeakMap();
+  syncedDocs = new WeakSet();
+
+  syncDocument(doc) {
+    if (!doc || this.syncedDocs.has(doc)) return;
+    this.syncedDocs.add(doc);
+    const EventCtor = doc.defaultView?.Event ?? Event;
+    doc.dispatchEvent(new EventCtor(CLICK_PROP_SYNC_EVENT));
+  }
+
+  getStyle(element) {
+    if (!this.styles.has(element)) {
+      const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+      this.styles.set(element, {
+        cursor: style?.cursor ?? "",
+        pointerEvents: style?.pointerEvents ?? "",
+      });
+    }
+    return this.styles.get(element);
+  }
 
   hasPointerCursor(element) {
-    if (!this.pointerCursors.has(element)) {
-      const view = element.ownerDocument.defaultView;
-      this.pointerCursors.set(element, view?.getComputedStyle(element).cursor === "pointer");
-    }
-    return this.pointerCursors.get(element);
+    return this.getStyle(element).cursor === "pointer";
+  }
+
+  isDisabledOrInert(element) {
+    const { cursor, pointerEvents } = this.getStyle(element);
+    return cursor === "not-allowed" || pointerEvents === "none";
   }
 
   classify(element) {
-    if (element.hasAttribute("data-vimium-click")) return "self";
-    if (element === element.ownerDocument.body) return null;
+    if (
+      element === element.ownerDocument.body ||
+      element === element.ownerDocument.documentElement
+    ) {
+      return null;
+    }
+    this.syncDocument(element.ownerDocument);
+    if (
+      element.hasAttribute("data-vimium-click") ||
+      element.hasAttribute("data-vimium-prop-click")
+    ) {
+      return this.isDisabledOrInert(element) ? null : "self";
+    }
     const parent = element.parentElement ?? element.getRootNode().host;
     // closest() stops at a shadow root. Continue the search at its host when needed.
     for (let ancestor = parent; ancestor; ancestor = ancestor.getRootNode().host) {
-      const host = ancestor.closest("[data-vimium-click], [data-vimium-click-root]");
+      const host = ancestor.closest(
+        "[data-vimium-click], [data-vimium-prop-click], [data-vimium-click-root], [data-vimium-prop-click-root]",
+      );
       if (host) {
-        if (!this.hasPointerCursor(element) || this.hasPointerCursor(parent)) return null;
-        return host.hasAttribute("data-vimium-click") ? "delegated" : "weak";
+        if (
+          this.isDisabledOrInert(element) ||
+          !this.hasPointerCursor(element) ||
+          this.hasPointerCursor(parent)
+        ) {
+          return null;
+        }
+        return host.hasAttribute("data-vimium-click") || host.hasAttribute("data-vimium-prop-click")
+          ? "delegated"
+          : "weak";
       }
     }
     return null;

@@ -3,6 +3,109 @@
 // identity so native dispatch and removal also work with listeners installed before this script.
 (() => {
   const installed = Symbol.for("vimium.clickWatch");
+  const propSyncInstalled = Symbol.for("vimium.clickPropSync");
+  const syncEvent = "vimium:sync-click-props";
+  const propAttr = "data-vimium-prop-click";
+  const propRootAttr = "data-vimium-prop-click-root";
+
+  const prototype = EventTarget.prototype;
+  const add = prototype.addEventListener;
+  const remove = prototype.removeEventListener;
+
+  function isPageTarget(target) {
+    return target === globalThis || target === document || target === document.documentElement ||
+      target === document.body;
+  }
+
+  if (!globalThis[propSyncInstalled]) {
+    const stopImmediate = Event.prototype.stopImmediatePropagation;
+    const hasAttr = Element.prototype.hasAttribute;
+    const toggleAttr = Element.prototype.toggleAttribute;
+    const docQueryAll = Document.prototype.querySelectorAll;
+    const shadowQueryAll = ShadowRoot.prototype.querySelectorAll;
+    const ownKeys = Object.keys;
+    let markedRefs = [];
+
+    const hasReactClickProp = (target) => {
+      for (const key of ownKeys(target)) {
+        if (key.startsWith("__reactProps$") || key.startsWith("__reactEventHandlers$")) {
+          const props = target[key];
+          if (props && typeof props === "object") {
+            const ariaDisabled = props["aria-disabled"];
+            const isDisabled = props.disabled === true ||
+              ariaDisabled === true ||
+              (typeof ariaDisabled === "string" &&
+                ["", "true"].includes(ariaDisabled.toLowerCase()));
+            if (!isDisabled && typeof props.onClick === "function") return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    const hasDirectClickProp = (element) => {
+      try {
+        if (typeof element.onclick === "function" && !hasAttr.call(element, "onclick")) {
+          return true;
+        }
+        return hasReactClickProp(element);
+      } catch {
+        return false;
+      }
+    };
+
+    const hasPageRootClickProp = (root) => {
+      try {
+        return root != null && typeof root.onclick === "function" &&
+          (!(root instanceof Element) || !hasAttr.call(root, "onclick"));
+      } catch {
+        return false;
+      }
+    };
+
+    const syncPropClicks = (event) => {
+      stopImmediate.call(event);
+      const roots = [globalThis, document, document.documentElement, document.body];
+      document.documentElement?.toggleAttribute(
+        propRootAttr,
+        roots.some(hasPageRootClickProp),
+      );
+
+      const nextRefs = [];
+      const seen = new WeakSet();
+      const visitRoot = (root, queryAll) => {
+        for (const element of queryAll.call(root, "*")) {
+          if (!isPageTarget(element)) {
+            seen.add(element);
+            if (hasDirectClickProp(element)) {
+              if (!hasAttr.call(element, propAttr)) toggleAttr.call(element, propAttr, true);
+              nextRefs.push(new WeakRef(element));
+            } else if (hasAttr.call(element, propAttr)) {
+              toggleAttr.call(element, propAttr, false);
+            }
+          }
+          if (element.shadowRoot) {
+            visitRoot(element.shadowRoot, shadowQueryAll);
+          }
+        }
+      };
+
+      if (document.documentElement) {
+        visitRoot(document, docQueryAll);
+      }
+      for (const ref of markedRefs) {
+        const element = ref.deref();
+        if (element && !seen.has(element) && hasAttr.call(element, propAttr)) {
+          toggleAttr.call(element, propAttr, false);
+        }
+      }
+      markedRefs = nextRefs;
+    };
+
+    add.call(document, syncEvent, syncPropClicks, true);
+    globalThis[propSyncInstalled] = true;
+  }
+
   if (globalThis[installed]) return;
 
   const types = new Set([
@@ -14,16 +117,8 @@
     "pointerup",
     "touchstart",
   ]);
-  const prototype = EventTarget.prototype;
-  const add = prototype.addEventListener;
-  const remove = prototype.removeEventListener;
   const listeners = new WeakMap();
   const dirty = new Set();
-
-  function isPageTarget(target) {
-    return target === globalThis || target === document || target === document.documentElement ||
-      target === document.body;
-  }
 
   function canObserve(target, type, listener) {
     return types.has(type) && listener != null &&
