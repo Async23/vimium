@@ -151,47 +151,75 @@ context("Script-bound link hints", () => {
   });
 
   should(
-    "recognize React and IDL click props inside pointer containers while skipping non-click or disabled controls",
+    "recognize React and IDL click props while blocking disabled/inert leaks and cleaning up DOM attributes",
     async () => {
       doc.body.innerHTML = [
-        '<div id="player" style="cursor:pointer">',
-        '  <div id="like">5286</div>',
-        '  <div id="author" style="cursor:auto">@author</div>',
-        '  <div id="disabled-prop">disabled prop</div>',
-        '  <div id="disabled-cursor" style="cursor:not-allowed">next</div>',
-        '  <div id="inert-overlay" style="pointer-events:none">overlay</div>',
-        '  <div id="capture-only">panel</div>',
-        '  <div id="idl-btn">idl</div>',
+        '<div id="root" style="cursor:auto">',
+        '  <form id="clobber"><input name="shadowRoot"></form>',
+        '  <div id="inline-host" onclick=""><span id="inline-child" style="cursor:pointer">inline</span></div>',
+        '  <div id="disabled-btn" class="btn" style="cursor:pointer">disabled under auto root</div>',
+        '  <div id="not-allowed-btn" class="btn" style="cursor:not-allowed">blocked btn</div>',
+        '  <div id="not-allowed-role" role="button" style="cursor:not-allowed">blocked role</div>',
+        '  <div id="player" style="cursor:pointer">',
+        '    <div id="like">5286</div>',
+        '    <div id="author" style="cursor:auto">@author</div>',
+        '    <div id="disabled-cursor" style="cursor:not-allowed">next</div>',
+        '    <div id="inert-overlay" style="pointer-events:none">overlay</div>',
+        '    <div id="capture-only">panel</div>',
+        '    <div id="idl-btn">idl</div>',
+        "  </div>",
         "</div>",
       ].join("");
+      doc.getElementById("root").addEventListener("click", noop);
       doc.getElementById("player").addEventListener("click", noop);
       await Promise.resolve();
 
+      let inlineOnclickReads = 0;
+      Object.defineProperty(doc.getElementById("inline-host"), "onclick", {
+        configurable: true,
+        get() {
+          inlineOnclickReads++;
+          return noop;
+        },
+      });
+
+      const disabledBtn = doc.getElementById("disabled-btn");
+      const notAllowedBtn = doc.getElementById("not-allowed-btn");
+      const notAllowedRole = doc.getElementById("not-allowed-role");
+      const inlineChild = doc.getElementById("inline-child");
       const like = doc.getElementById("like");
       const author = doc.getElementById("author");
-      const disabledProp = doc.getElementById("disabled-prop");
       const disabledCursor = doc.getElementById("disabled-cursor");
       const inertOverlay = doc.getElementById("inert-overlay");
       const captureOnly = doc.getElementById("capture-only");
       const idlBtn = doc.getElementById("idl-btn");
 
+      disabledBtn.__reactProps$abc = { onClick: noop, disabled: true };
       like.__reactProps$abc = { onClick: noop };
       author.__reactEventHandlers$xyz = { onClick: noop };
-      disabledProp.__reactProps$abc = { onClick: noop, disabled: true };
       disabledCursor.__reactProps$abc = { onClick: noop };
       inertOverlay.__reactProps$abc = { onClick: noop };
       captureOnly.__reactProps$abc = { onClickCapture: noop, onPointerDown: noop };
       idlBtn.onclick = noop;
 
+      assert.isFalse(hasHint(disabledBtn));
+      assert.isFalse(hasHint(notAllowedBtn));
+      assert.isFalse(hasHint(notAllowedRole));
+      assert.isTrue(hasHint(inlineChild));
+      assert.equal(0, inlineOnclickReads);
       assert.isTrue(hasHint(like));
       assert.isTrue(hasHint(author));
-      assert.isFalse(hasHint(disabledProp));
       assert.isFalse(hasHint(disabledCursor));
       assert.isFalse(hasHint(inertOverlay));
       assert.isFalse(hasHint(captureOnly));
       assert.isTrue(hasHint(idlBtn));
 
-      // Re-renders that drop onClick or clear onclick must retire stale markers on the next scan.
+      // Transient markers must be cleaned up immediately after each scan.
+      assert.isFalse(like.hasAttribute("data-vimium-prop-click"));
+      assert.isFalse(disabledBtn.hasAttribute("data-vimium-prop-disabled"));
+      assert.isFalse(doc.documentElement.hasAttribute("data-vimium-prop-click-root"));
+
+      // Re-renders that drop onClick or clear onclick must retire markers on the next scan.
       like.__reactProps$abc = { onMouseEnter: noop };
       idlBtn.onclick = null;
       assert.isFalse(hasHint(like));
@@ -200,18 +228,28 @@ context("Script-bound link hints", () => {
   );
 
   should(
-    "support page-level onclick delegates and install prop sync across script upgrades",
+    "support page-level onclick delegates and replace prop sync on repeated reloads",
     () => {
       const freshPage = new JSDOM(
         '<body><div id="item" style="cursor:pointer">item</div><p id="plain">plain</p></body>',
         { runScripts: "outside-only" },
       ).window;
       try {
-        // Simulate a tab that already had an older clickWatch symbol before extension reload.
+        let oldTeardownRuns = 0;
         freshPage[Symbol.for("vimium.clickWatch")] = true;
+        freshPage[Symbol.for("vimium.clickPropSync")] = {
+          teardown() {
+            oldTeardownRuns++;
+          },
+        };
         freshPage.eval(Deno.readTextFileSync(watcher));
+        assert.equal(1, oldTeardownRuns);
+
         freshPage.document.onclick = noop;
         assert.isTrue(hasHint(freshPage.document.getElementById("item")));
+        assert.isFalse(
+          freshPage.document.documentElement.hasAttribute("data-vimium-prop-click-root"),
+        );
         assert.isFalse(hasHint(freshPage.document.getElementById("plain")));
         freshPage.document.onclick = null;
         assert.isFalse(hasHint(freshPage.document.getElementById("item")));

@@ -1169,18 +1169,29 @@ const spanWrap = (hintString) => {
 };
 
 const CLICK_PROP_SYNC_EVENT = "vimium:sync-click-props";
+const CLICK_PROP_CLEAR_EVENT = "vimium:clear-click-props";
 
 // CSS cursor is inherited. Under a delegated listener, only the outer edge of a pointer-styled
 // block is evidence of a control. Cache computed styles for the duration of one hint scan.
 class ScriptClickEvidence {
   styles = new WeakMap();
   syncedDocs = new WeakSet();
+  syncedDocList = [];
 
   syncDocument(doc) {
     if (!doc || this.syncedDocs.has(doc)) return;
     this.syncedDocs.add(doc);
+    this.syncedDocList.push(doc);
     const EventCtor = doc.defaultView?.Event ?? Event;
     doc.dispatchEvent(new EventCtor(CLICK_PROP_SYNC_EVENT));
+  }
+
+  cleanup() {
+    while (this.syncedDocList.length > 0) {
+      const doc = this.syncedDocList.pop();
+      const EventCtor = doc.defaultView?.Event ?? Event;
+      doc.dispatchEvent(new EventCtor(CLICK_PROP_CLEAR_EVENT));
+    }
   }
 
   getStyle(element) {
@@ -1203,14 +1214,16 @@ class ScriptClickEvidence {
     return cursor === "not-allowed" || pointerEvents === "none";
   }
 
-  classify(element) {
-    if (
-      element === element.ownerDocument.body ||
-      element === element.ownerDocument.documentElement
-    ) {
-      return null;
-    }
+  isDisabled(element) {
     this.syncDocument(element.ownerDocument);
+    return element.hasAttribute("data-vimium-prop-disabled") || this.isDisabledOrInert(element);
+  }
+
+  classify(element) {
+    const doc = element.ownerDocument;
+    if (element === doc.body || element === doc.documentElement) return null;
+    this.syncDocument(doc);
+    if (element.hasAttribute("data-vimium-prop-disabled")) return null;
     if (
       element.hasAttribute("data-vimium-click") ||
       element.hasAttribute("data-vimium-prop-click")
@@ -1218,11 +1231,14 @@ class ScriptClickEvidence {
       return this.isDisabledOrInert(element) ? null : "self";
     }
     const parent = element.parentElement ?? element.getRootNode().host;
+    const hasInlinePageRoot = Boolean(
+      doc.body?.hasAttribute("onclick") || doc.documentElement?.hasAttribute("onclick"),
+    );
     // closest() stops at a shadow root. Continue the search at its host when needed.
     for (let ancestor = parent; ancestor; ancestor = ancestor.getRootNode().host) {
       const host = ancestor.closest(
-        "[data-vimium-click], [data-vimium-prop-click], [data-vimium-click-root], [data-vimium-prop-click-root]",
-      );
+        "[data-vimium-click], [data-vimium-prop-click], [onclick], [data-vimium-click-root], [data-vimium-prop-click-root]",
+      ) ?? (hasInlinePageRoot ? doc.documentElement : null);
       if (host) {
         if (
           this.isDisabledOrInert(element) ||
@@ -1231,7 +1247,9 @@ class ScriptClickEvidence {
         ) {
           return null;
         }
-        return host.hasAttribute("data-vimium-click") || host.hasAttribute("data-vimium-prop-click")
+        return host.hasAttribute("data-vimium-click") ||
+            host.hasAttribute("data-vimium-prop-click") ||
+            (host.hasAttribute("onclick") && host !== doc.body && host !== doc.documentElement)
           ? "delegated"
           : "weak";
       }
@@ -1245,7 +1263,17 @@ const LocalHints = {
   // which bounds this element in the viewport. We return an array because there may be more than
   // one part of element which is clickable (for example, if it's an image); if so, each LocalHint
   // represents one of the clickable rectangles of the element.
-  getLocalHintsForElement(element, clickEvidence = new ScriptClickEvidence()) {
+  getLocalHintsForElement(element, clickEvidence = null) {
+    const ownsEvidence = clickEvidence == null;
+    if (ownsEvidence) clickEvidence = new ScriptClickEvidence();
+    try {
+      return this.collectHintsForElement(element, clickEvidence);
+    } finally {
+      if (ownsEvidence) clickEvidence.cleanup();
+    }
+  },
+
+  collectHintsForElement(element, clickEvidence) {
     // Get the tag name. However, `element.tagName` can be an element (not a string, see #2035), so
     // we guard against that.
     const tagName = element.tagName.toLowerCase?.() || "";
@@ -1439,6 +1467,14 @@ const LocalHints = {
     }
 
     if (isClickable) {
+      if (
+        imageMapAreas.length === 0 &&
+        reason !== "Frame." &&
+        reason !== "Scroll." &&
+        clickEvidence.isDisabled(element)
+      ) {
+        return [];
+      }
       // An image map has multiple clickable areas, and so can represent multiple LocalHints.
       if (imageMapAreas.length > 0) {
         const mapHints = imageMapAreas.map((areaAndRect) => {
@@ -1539,7 +1575,7 @@ const LocalHints = {
 
     const elements = getAllElements(document.documentElement);
     if (scrollableOnly) elements.unshift(document.documentElement);
-    const clickEvidence = new ScriptClickEvidence();
+    const clickEvidence = scrollableOnly ? null : new ScriptClickEvidence();
     let localHints = [];
 
     // The order of elements here is important; they should appear in the order they are in the DOM,
@@ -1548,39 +1584,29 @@ const LocalHints = {
     // NOTE(mrmr1993): Our previous method (combined XPath and DOM traversal for jsaction) couldn't
     // provide this, so it's necessary to check whether elements are clickable in order, as we do
     // below.
-    for (const element of Array.from(elements)) {
-      if (!requireHref || !!element.href) {
-        const hints = scrollableOnly
-          ? this.getScrollableHintsForElement(element)
-          : this.getLocalHintsForElement(element, clickEvidence);
-        localHints.push(...hints);
+    try {
+      for (const element of Array.from(elements)) {
+        if (!requireHref || !!element.href) {
+          const hints = scrollableOnly
+            ? this.getScrollableHintsForElement(element)
+            : this.getLocalHintsForElement(element, clickEvidence);
+          localHints.push(...hints);
+        }
       }
+    } finally {
+      clickEvidence?.cleanup();
     }
 
     // Traverse the DOM from descendants to ancestors, so later elements show above earlier elements.
     localHints = localHints.reverse();
 
-    // A delegation container can be many levels above the actual controls. Visit descendants
-    // first and mark each ancestor once, irrespective of nesting depth or the number of siblings.
-    const hintedAncestors = new Set();
-    localHints = localHints.filter((hint) => {
-      if (hint.possibleFalsePositive && hintedAncestors.has(hint.element)) return false;
-      if (hint.secondClassCitizen) return true;
-      let ancestor = hint.element.parentElement ?? hint.element.getRootNode().host;
-      while (ancestor && !hintedAncestors.has(ancestor)) {
-        hintedAncestors.add(ancestor);
-        ancestor = ancestor.parentElement ?? ancestor.getRootNode().host;
-      }
-      return true;
-    });
-
-    // This loop will check if any corner or center of element is clickable.
+    // Filter out covered hints and second-class citizens before deduplicating ancestors, so an
+    // occluded child hint cannot suppress a still-visible clickable ancestor.
     // document.elementFromPoint will find an element at a x,y location.
     // Node.contain checks to see if an element contains another. note: someNode.contains(someNode)
     // === true. If we do not find our element as a descendant of any element we find, assume it's
     // completely covered.
-
-    const nonOverlappingHints = localHints.filter((hint) => {
+    const visibleHints = localHints.filter((hint) => {
       if (hint.secondClassCitizen) return false;
       const rect = hint.rect;
 
@@ -1614,6 +1640,20 @@ const LocalHints = {
           if (hasIntersection) return true;
         }
       }
+      return false;
+    });
+
+    // A delegation container can be many levels above the actual controls. Visit surviving
+    // descendants first and mark each ancestor once, irrespective of nesting depth or siblings.
+    const hintedAncestors = new Set();
+    const nonOverlappingHints = visibleHints.filter((hint) => {
+      if (hint.possibleFalsePositive && hintedAncestors.has(hint.element)) return false;
+      let ancestor = hint.element.parentElement ?? hint.element.getRootNode().host;
+      while (ancestor && !hintedAncestors.has(ancestor)) {
+        hintedAncestors.add(ancestor);
+        ancestor = ancestor.parentElement ?? ancestor.getRootNode().host;
+      }
+      return true;
     });
 
     nonOverlappingHints.reverse();

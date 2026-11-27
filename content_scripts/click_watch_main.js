@@ -5,105 +5,154 @@
   const installed = Symbol.for("vimium.clickWatch");
   const propSyncInstalled = Symbol.for("vimium.clickPropSync");
   const syncEvent = "vimium:sync-click-props";
+  const clearEvent = "vimium:clear-click-props";
   const propAttr = "data-vimium-prop-click";
+  const propDisabledAttr = "data-vimium-prop-disabled";
   const propRootAttr = "data-vimium-prop-click-root";
 
   const prototype = EventTarget.prototype;
   const add = prototype.addEventListener;
   const remove = prototype.removeEventListener;
+  const stopImmediate = Event.prototype.stopImmediatePropagation;
+  const hasAttr = Element.prototype.hasAttribute;
+  const toggleAttr = Element.prototype.toggleAttribute;
+  const docQueryAll = Document.prototype.querySelectorAll;
+  const shadowQueryAll = ShadowRoot.prototype.querySelectorAll;
+  const getShadowRoot = Object.getOwnPropertyDescriptor(Element.prototype, "shadowRoot")?.get;
+  const hasOwn = Object.prototype.hasOwnProperty;
+  const ownKeys = Object.keys;
 
   function isPageTarget(target) {
     return target === globalThis || target === document || target === document.documentElement ||
       target === document.body;
   }
 
-  if (!globalThis[propSyncInstalled]) {
-    const stopImmediate = Event.prototype.stopImmediatePropagation;
-    const hasAttr = Element.prototype.hasAttribute;
-    const toggleAttr = Element.prototype.toggleAttribute;
-    const docQueryAll = Document.prototype.querySelectorAll;
-    const shadowQueryAll = ShadowRoot.prototype.querySelectorAll;
-    const ownKeys = Object.keys;
-    let markedRefs = [];
+  globalThis[propSyncInstalled]?.teardown?.();
+  {
+    const knownReactKeys = [];
+    let markedElements = [];
 
-    const hasReactClickProp = (target) => {
-      for (const key of ownKeys(target)) {
-        if (key.startsWith("__reactProps$") || key.startsWith("__reactEventHandlers$")) {
-          const props = target[key];
-          if (props && typeof props === "object") {
-            const ariaDisabled = props["aria-disabled"];
-            const isDisabled = props.disabled === true ||
-              ariaDisabled === true ||
-              (typeof ariaDisabled === "string" &&
-                ["", "true"].includes(ariaDisabled.toLowerCase()));
-            if (!isDisabled && typeof props.onClick === "function") return true;
-          }
-        }
-      }
-      return false;
+    const isReactKey = (key) =>
+      key.startsWith("__reactProps$") || key.startsWith("__reactEventHandlers$");
+
+    const classifyReactProps = (props) => {
+      if (!props || typeof props !== "object") return null;
+      if (props.disabled === true) return "disabled";
+      if (typeof props.onClick === "function") return "click";
+      return null;
     };
 
-    const hasDirectClickProp = (element) => {
-      try {
-        if (typeof element.onclick === "function" && !hasAttr.call(element, "onclick")) {
-          return true;
+    const inspectReactProps = (element) => {
+      let sawReactProps = false;
+      let state = null;
+      for (let i = 0; i < knownReactKeys.length; i++) {
+        const key = knownReactKeys[i];
+        if (hasOwn.call(element, key)) {
+          sawReactProps = true;
+          const res = classifyReactProps(element[key]);
+          if (res === "click") return "click";
+          if (res === "disabled") state = "disabled";
         }
-        return hasReactClickProp(element);
+      }
+      if (sawReactProps) return state;
+
+      for (const key of ownKeys(element)) {
+        if (isReactKey(key)) {
+          if (!knownReactKeys.includes(key)) knownReactKeys.push(key);
+          const res = classifyReactProps(element[key]);
+          if (res === "click") return "click";
+          if (res === "disabled") state = "disabled";
+        }
+      }
+      return state;
+    };
+
+    const inspectElementProps = (element) => {
+      try {
+        const reactState = inspectReactProps(element);
+        if (reactState != null) return reactState;
+        if (!hasAttr.call(element, "onclick") && typeof element.onclick === "function") {
+          return "click";
+        }
+        return null;
       } catch {
-        return false;
+        return null;
       }
     };
 
     const hasPageRootClickProp = (root) => {
       try {
-        return root != null && typeof root.onclick === "function" &&
-          (!(root instanceof Element) || !hasAttr.call(root, "onclick"));
+        return root != null &&
+          (!(root instanceof Element) || !hasAttr.call(root, "onclick")) &&
+          typeof root.onclick === "function";
       } catch {
         return false;
       }
     };
 
+    const clearPropClicks = (event) => {
+      if (event) stopImmediate.call(event);
+      const docEl = document.documentElement;
+      if (docEl instanceof Element && hasAttr.call(docEl, propRootAttr)) {
+        toggleAttr.call(docEl, propRootAttr, false);
+      }
+      for (const element of markedElements) {
+        if (hasAttr.call(element, propAttr)) toggleAttr.call(element, propAttr, false);
+        if (hasAttr.call(element, propDisabledAttr)) {
+          toggleAttr.call(element, propDisabledAttr, false);
+        }
+      }
+      markedElements = [];
+    };
+
     const syncPropClicks = (event) => {
       stopImmediate.call(event);
-      const roots = [globalThis, document, document.documentElement, document.body];
-      document.documentElement?.toggleAttribute(
-        propRootAttr,
-        roots.some(hasPageRootClickProp),
-      );
+      clearPropClicks(null);
 
-      const nextRefs = [];
-      const seen = new WeakSet();
+      const docEl = document.documentElement;
+      if (!(docEl instanceof Element)) return;
+
+      const roots = [globalThis, document, docEl, document.body];
+      if (roots.some(hasPageRootClickProp)) {
+        toggleAttr.call(docEl, propRootAttr, true);
+      }
+
       const visitRoot = (root, queryAll) => {
         for (const element of queryAll.call(root, "*")) {
           if (!isPageTarget(element)) {
-            seen.add(element);
-            if (hasDirectClickProp(element)) {
-              if (!hasAttr.call(element, propAttr)) toggleAttr.call(element, propAttr, true);
-              nextRefs.push(new WeakRef(element));
-            } else if (hasAttr.call(element, propAttr)) {
-              toggleAttr.call(element, propAttr, false);
+            const state = inspectElementProps(element);
+            if (state === "click") {
+              toggleAttr.call(element, propAttr, true);
+              markedElements.push(element);
+            } else if (state === "disabled") {
+              toggleAttr.call(element, propDisabledAttr, true);
+              markedElements.push(element);
+            } else {
+              if (hasAttr.call(element, propAttr)) toggleAttr.call(element, propAttr, false);
+              if (hasAttr.call(element, propDisabledAttr)) {
+                toggleAttr.call(element, propDisabledAttr, false);
+              }
             }
           }
-          if (element.shadowRoot) {
-            visitRoot(element.shadowRoot, shadowQueryAll);
+          const shadow = getShadowRoot?.call(element);
+          if (shadow) {
+            visitRoot(shadow, shadowQueryAll);
           }
         }
       };
 
-      if (document.documentElement) {
-        visitRoot(document, docQueryAll);
-      }
-      for (const ref of markedRefs) {
-        const element = ref.deref();
-        if (element && !seen.has(element) && hasAttr.call(element, propAttr)) {
-          toggleAttr.call(element, propAttr, false);
-        }
-      }
-      markedRefs = nextRefs;
+      visitRoot(document, docQueryAll);
     };
 
     add.call(document, syncEvent, syncPropClicks, true);
-    globalThis[propSyncInstalled] = true;
+    add.call(document, clearEvent, clearPropClicks, true);
+    globalThis[propSyncInstalled] = {
+      teardown() {
+        clearPropClicks(null);
+        remove.call(document, syncEvent, syncPropClicks, true);
+        remove.call(document, clearEvent, clearPropClicks, true);
+      },
+    };
   }
 
   if (globalThis[installed]) return;

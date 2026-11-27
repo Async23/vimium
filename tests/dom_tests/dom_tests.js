@@ -141,7 +141,7 @@ context("False positives in link-hint", () => {
   });
 
   should(
-    "prefer inner prop-bound targets over outer pointer wrappers and skip disabled cursors",
+    "prefer inner prop-bound targets over outer pointer wrappers and skip disabled or inert btn children",
     () => {
       const container = document.getElementById("test-div");
       container.innerHTML = [
@@ -149,15 +149,38 @@ context("False positives in link-hint", () => {
         '  <div id="more-wrap" style="cursor:pointer; width:40px; height:40px">',
         '    <svg id="more-svg" data-vimium-prop-click width="24" height="24"></svg>',
         "  </div>",
-        '  <div id="next-disabled" data-vimium-prop-click style="cursor:not-allowed; width:40px; height:40px">next</div>',
+        '  <div id="ripple-btn" class="btn" style="position:relative; width:40px; height:30px">like',
+        '    <span class="btn__ripple" style="pointer-events:none; position:absolute; inset:0"></span>',
+        "  </div>",
+        '  <div id="next-disabled" class="btn" data-vimium-prop-click style="cursor:not-allowed; width:40px; height:40px">next</div>',
         "</div>",
       ].join("");
+      let svgClicks = 0;
+      document.getElementById("more-svg").addEventListener("click", () => svgClicks++);
       const hints = LocalHints.getLocalHints(false).filter((hint) =>
         container.contains(hint.element)
       );
-      assert.equal(["more-svg"], hints.map((hint) => hint.element.id));
+      assert.equal(["more-svg", "ripple-btn"], hints.map((hint) => hint.element.id));
+      DomUtils.simulateClick(hints[0].element);
+      assert.equal(1, svgClicks);
     },
   );
+
+  should("keep a visible clickable container when its child control is occluded", () => {
+    const container = document.getElementById("test-div");
+    container.innerHTML = [
+      '<div style="position:relative; width:200px; height:80px">',
+      '  <div id="card" data-vimium-prop-click style="width:200px; height:80px">card',
+      '    <button id="covered-child" style="position:absolute; right:0; top:0; width:40px; height:40px">act</button>',
+      "  </div>",
+      '  <div id="blocker" style="position:absolute; right:0; top:0; width:50px; height:50px; background:#000"></div>',
+      "</div>",
+    ].join("");
+    const hints = LocalHints.getLocalHints(false).filter((hint) =>
+      container.contains(hint.element)
+    );
+    assert.equal(["card"], hints.map((hint) => hint.element.id));
+  });
 });
 
 context("jsaction matching", () => {
